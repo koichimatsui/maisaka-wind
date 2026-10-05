@@ -21,6 +21,9 @@ svg text{fill:var(--muted);font-size:11px}
   padding:6px 8px;font-size:13px;display:none;box-shadow:0 2px 8px #0003}
 #tideinfo{color:var(--muted)}
 .summary{color:var(--muted);font-size:13px;margin-top:4px}
+svg{touch-action:pan-y}  /* 横になぞると時刻ごとの値が出る（縦スクロールは効く） */
+@media (max-width:600px){main{padding:10px 8px}h1{font-size:16px}.legend{gap:4px 10px;font-size:11.5px}
+  button,select{padding:4px 8px}#tideinfo{flex-basis:100%}}
 </style></head><body><main>
 <h1>舞阪灯台の風（30分ごと）</h1>
 <div class="bar">
@@ -40,7 +43,7 @@ svg text{fill:var(--muted);font-size:11px}
   <span><i class="sw" style="background:var(--tide);opacity:.35"></i>村櫛の潮位</span>
   <span><i class="sw" style="background:none;border-top:2px solid var(--tide);border-radius:0;height:0;width:16px;vertical-align:3px"></i>舞阪の潮位（推算）</span>
 </div>
-<svg id="chart" viewBox="0 0 960 444" role="img" aria-label="風速と風向のグラフ"></svg>
+<svg id="chart" role="img" aria-label="風速と風向のグラフ"></svg>
 <div class="summary" id="summary"></div>
 </main><div id="tip"></div>
 <script>
@@ -61,8 +64,18 @@ const days = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-0
 const sel = document.getElementById('day');
 sel.innerHTML = days.map(d => `<option>${d}</option>`).join('');
 
-const W = 960, H = 444, M = {l: 44, r: 44, t: 90, b: 32}, PW = W - M.l - M.r, PH = H - M.t - M.b;
-const SLOT = PW / 48;
+// レイアウト: SVG の1単位＝画面の1pxになるよう、表示幅に合わせて毎回計算する（文字が縮まない）
+const svgEl = document.getElementById('chart');
+let W, H, M, PW, PH, SLOT, NARROW;
+function layout() {
+  W = Math.round(svgEl.parentElement.clientWidth) || 960;
+  NARROW = W < 600;  // スマホ: 余白・目盛り・記号を詰め、気温は3時間ごと
+  M = NARROW ? {l: 26, r: 16, t: 80, b: 24} : {l: 44, r: 44, t: 90, b: 32};
+  H = NARROW ? 420 : 444;
+  PW = W - M.l - M.r; PH = H - M.t - M.b; SLOT = PW / 48;
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+}
+const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
 // 風向の右軸: E(90)→S→W→N(360)。北寄り(<67.5°)は360を足して N の上側に置く
 const DMIN = 56, DMAX = 416;
 const dirY = d => { const v = d < 67.5 ? d + 360 : d; return M.t + PH * (1 - (v - DMIN) / (DMAX - DMIN)); };
@@ -81,7 +94,9 @@ const TMIN = Math.min(...allLv) - 10, TMAX = Math.max(...allLv) + 10;
 const tideY = v => M.t + PH * (0.9 - 0.7 * (v - TMIN) / (TMAX - TMIN));
 
 function draw(day) {
-  const svg = document.getElementById('chart'); svg.innerHTML = '';
+  layout();
+  const svg = svgEl; svg.innerHTML = '';
+  const fs = NARROW ? 10 : 11;  // 小さい文字の大きさ
   const slots = Array(48).fill(null);
   for (const r of byDay[day] || []) slots[(+r.t.slice(11, 13)) * 2 + (+r.t.slice(14, 16) >= 30)] = r;
   const smax = Math.max(15, ...slots.filter(r => r && r.s != null).map(r => Math.ceil(r.s) + 1));
@@ -94,8 +109,8 @@ function draw(day) {
     const [rise, set] = sun.map(hx);
     for (const [a, b] of [[M.l, rise], [set, W - M.r]])
       el('rect', {x: a, y: M.t, width: b - a, height: PH, fill: 'var(--night)', opacity: .07}, svg);
-    el('text', {x: rise, y: 11, 'text-anchor': 'middle'}, svg).textContent = `日の出 ${sun[0]}`;
-    el('text', {x: set, y: 11, 'text-anchor': 'middle'}, svg).textContent = `日没 ${sun[1]}`;
+    el('text', {x: clamp(rise, 34, W - 34), y: 11, 'text-anchor': 'middle'}, svg).textContent = `日の出 ${sun[0]}`;
+    el('text', {x: clamp(set, 34, W - 34), y: 11, 'text-anchor': 'middle'}, svg).textContent = `日没 ${sun[1]}`;
   }
 
   // 浜松の天気アイコン（1時間＝2枠ぶんの中央。予報は薄く）
@@ -103,19 +118,19 @@ function draw(day) {
   wx.forEach((w, h) => {
     if (!w) return;
     const night = sun && (h + .5) * 60 < toMin(sun[0]) || sun && (h + .5) * 60 > toMin(sun[1]);
-    const t = el('text', {x: M.l + (h * 2 + 1) * SLOT, y: M.t - 52, 'text-anchor': 'middle',
-      style: `font-size:16px;opacity:${w[1] === 'fcst' ? .4 : 1}`}, svg);
+    const t = el('text', {x: M.l + (h * 2 + 1) * SLOT, y: M.t - (NARROW ? 48 : 52), 'text-anchor': 'middle',
+      style: `font-size:${Math.min(16, SLOT * 2 - 1)}px;opacity:${w[1] === 'fcst' ? .4 : 1}`}, svg);
     t.textContent = wxIcon(w[0], night);
     el('title', {}, t).textContent = `${h}時 ${w[0]}（${w[1] === 'fcst' ? '予報' : '実測'}）`;
   });
 
   // 浜松の気温（波の下の行。予報は薄く）
   const tp = TEMP[day] || [];
-  el('text', {x: M.l - 6, y: M.t - 8, 'text-anchor': 'end'}, svg).textContent = '℃';
+  el('text', {x: M.l - 4, y: M.t - 8, 'text-anchor': 'end'}, svg).textContent = '℃';
   tp.forEach((v, h) => {
-    if (!v) return;
+    if (!v || (NARROW && h % 3)) return;  // スマホは3時間ごと（予報の時刻と揃う）
     el('text', {x: M.l + (h * 2 + 1) * SLOT, y: M.t - 8, 'text-anchor': 'middle',
-      style: `fill:var(--fg);font-size:11px;opacity:${v[1] === 'fcst' ? .45 : .85}`}, svg)
+      style: `fill:var(--fg);font-size:${fs}px;opacity:${v[1] === 'fcst' ? .45 : .85}`}, svg)
       .textContent = Math.round(+v[0]);
   });
 
@@ -124,9 +139,10 @@ function draw(day) {
   const nowKey = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 13);
   sw.forEach((v, h) => {
     if (!v || v[0] == null) return;
-    const cx = M.l + (h * 2 + 1) * SLOT, cy = M.t - 32;
+    const cx = M.l + (h * 2 + 1) * SLOT, cy = M.t - (NARROW ? 30 : 32);
     const future = `${day}T${String(h).padStart(2, '0')}` > nowKey;
-    const g = el('g', {transform: `translate(${cx},${cy}) rotate(${v[0] + 180})`, opacity: future ? .7 : 1}, svg);
+    const k = Math.min(1, SLOT * 2 / 16);  // 1時間の幅に収まる大きさ
+    const g = el('g', {transform: `translate(${cx},${cy}) rotate(${v[0] + 180}) scale(${k})`, opacity: future ? .7 : 1}, svg);
     el('path', {d: 'M0,-9 L6,1 L2,0 L2,9 L-2,9 L-2,0 L-6,1 Z', fill: swellColor(v[1])}, g);
     el('title', {}, g).textContent = `${h}時 うねり ${dir16(v[0])}から 波高${v[1]}m（${v[2]}）`;
   });
@@ -135,17 +151,17 @@ function draw(day) {
   for (let s = 0; s <= smax; s += smax > 20 ? 5 : 2.5) {
     if (s % 1 && smax > 20) continue;
     el('line', {x1: M.l, x2: W - M.r, y1: sy(s), y2: sy(s), stroke: 'var(--grid)'}, svg);
-    if (Number.isInteger(s)) el('text', {x: M.l - 6, y: sy(s) + 4, 'text-anchor': 'end'}, svg).textContent = s;
+    if (Number.isInteger(s) && (!NARROW || s % 5 === 0))
+      el('text', {x: M.l - 4, y: sy(s) + 4, 'text-anchor': 'end'}, svg).textContent = s;
   }
-  el('text', {x: M.l - 6, y: M.t - 2, 'text-anchor': 'end'}, svg).textContent = '';
   // 右軸（風向）
   for (const [lab, d] of [['E', 90], ['S', 180], ['W', 270], ['N', 360]])
-    el('text', {x: W - M.r + 8, y: dirY(d) + 4}, svg).textContent = lab;
+    el('text', {x: W - M.r + (NARROW ? 4 : 8), y: dirY(d) + 4}, svg).textContent = lab;
   // 時刻軸
   el('line', {x1: M.l, x2: W - M.r, y1: sy(0), y2: sy(0), stroke: 'var(--axis)'}, svg);
-  for (let h = 0; h <= 24; h += 3)
-    el('text', {x: M.l + h * 2 * SLOT, y: H - 10, 'text-anchor': 'middle'}, svg).textContent = `${h}時`;
-  el('text', {x: 4, y: M.t + 22}, svg).textContent = 'm/s';
+  for (let h = 0; h <= 24; h += NARROW ? 6 : 3)
+    el('text', {x: M.l + h * 2 * SLOT, y: H - (NARROW ? 6 : 10), 'text-anchor': 'middle'}, svg).textContent = `${h}時`;
+  el('text', {x: 2, y: M.t + (NARROW ? 26 : 22), style: `font-size:${fs}px`}, svg).textContent = 'm/s';
 
   // 潮位（背景の面と、満潮・干潮の書き込み）
   const td = TIDE[day];
@@ -161,33 +177,35 @@ function draw(day) {
   // 風速の棒（上端だけ角丸）
   slots.forEach((r, i) => {
     if (!r) return;
-    const x = M.l + i * SLOT + 2, w = SLOT - 4;
+    const gap = NARROW ? .75 : 2, x = M.l + i * SLOT + gap, w = SLOT - gap * 2;
     if (r.s != null && r.s > 0) {
       const y = sy(r.s), h = sy(0) - y, rr = Math.min(4, h, w / 2);
       el('path', {d: `M${x},${sy(0)}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${sy(0)}Z`,
         fill: color(r.s)}, svg);
     } else if (r.note) {
-      el('circle', {cx: x + w / 2, cy: sy(0) - 5, r: 3, fill: 'var(--calm)'}, svg);
+      el('circle', {cx: x + w / 2, cy: sy(0) - 4, r: NARROW ? 2 : 3, fill: 'var(--calm)'}, svg);
     }
   });
 
   // 風向の点（■。線では結ばない）
+  const sq = NARROW ? 6 : 10;
   slots.forEach((r, i) => { if (r && r.d != null)
-    el('rect', {x: M.l + (i + .5) * SLOT - 5, y: dirY(r.d) - 5, width: 10, height: 10, fill: 'var(--line)', stroke: 'var(--bg)', 'stroke-width': 1.5}, svg); });
+    el('rect', {x: M.l + (i + .5) * SLOT - sq / 2, y: dirY(r.d) - sq / 2, width: sq, height: sq, fill: 'var(--line)', stroke: 'var(--bg)', 'stroke-width': NARROW ? 1 : 1.5}, svg); });
 
   // 村櫛の満潮・干潮の書き込み（棒や■に隠れないよう最前面。文字に背景色の縁取り）
   for (const [hm, kind, cm] of td ? td.mkev : []) {
     const x = hx(hm), y = tideY(cm), hi = kind === '満潮';
     el('circle', {cx: x, cy: y, r: 3.5, fill: 'var(--tide)', stroke: 'var(--bg)', 'stroke-width': 1.5}, svg);
-    el('text', {x: Math.min(Math.max(x, M.l + 40), W - M.r - 40), y: hi ? y - 9 : y + 17, 'text-anchor': 'middle',
-      style: 'fill:var(--tide);stroke:var(--bg);stroke-width:3px;paint-order:stroke;font-weight:600'}, svg)
-      .textContent = `${hi ? '満' : '干'} ${hm} ${cm}cm`;
+    const label = NARROW ? `${hi ? '満' : '干'}${hm} ${cm}` : `${hi ? '満' : '干'} ${hm} ${cm}cm`, half = NARROW ? 26 : 40;
+    el('text', {x: clamp(x, M.l + half, W - M.r - half), y: hi ? y - 9 : y + 17, 'text-anchor': 'middle',
+      style: `fill:var(--tide);stroke:var(--bg);stroke-width:3px;paint-order:stroke;font-weight:600;font-size:${fs}px`}, svg)
+      .textContent = label;
   }
 
   // ホバー用の透明な枠
   slots.forEach((r, i) => {
     const hit = el('rect', {x: M.l + i * SLOT, y: M.t, width: SLOT, height: PH, fill: 'transparent'}, svg);
-    hit.addEventListener('pointermove', e => {
+    const show = e => {
       const hh = String(Math.floor(i / 2)).padStart(2, '0'), mm = i % 2 ? '30' : '00';
       const k = Math.round((r ? +r.t.slice(11, 13) * 60 + +r.t.slice(14, 16) : i * 30 + 15) / 10);
       const w = wx[Math.floor(i / 2)];
@@ -198,10 +216,12 @@ function draw(day) {
       tip.innerHTML = r ? `<b>${r.t.slice(11)}</b><br>風速 ${r.s != null ? r.s + ' m/s' : (r.note || '—')}<br>風向 ${r.ja || '—'}${tide}`
                         : `<b>${hh}:${mm}</b><br>データなし${tide}`;
       tip.style.display = 'block';
-      tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px';
-      tip.style.top = (e.clientY + 12) + 'px';
-    });
-    hit.addEventListener('pointerleave', () => tip.style.display = 'none');
+      tip.style.left = clamp(e.clientX + 12, 8, innerWidth - tip.offsetWidth - 8) + 'px';
+      tip.style.top = (e.clientY + (e.pointerType === 'touch' ? -tip.offsetHeight - 16 : 12)) + 'px';  // 指で隠れないよう上に
+    };
+    hit.addEventListener('pointermove', show);
+    hit.addEventListener('pointerdown', show);
+    hit.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') tip.style.display = 'none'; });
   });
 
   const vals = slots.filter(r => r && r.s != null).map(r => r.s);
@@ -211,6 +231,10 @@ function draw(day) {
     : 'データなし';
 }
 
+// グラフ以外をタップしたら値の表示を消す。画面幅が変わったら描き直す
+document.addEventListener('pointerdown', e => { if (!svgEl.contains(e.target)) tip.style.display = 'none'; });
+let resizeTimer;
+addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => draw(sel.value), 150); });
 const go = i => { if (i >= 0 && i < days.length) { sel.selectedIndex = i; draw(days[i]); } };
 sel.onchange = () => draw(sel.value);
 document.getElementById('prev').onclick = () => go(sel.selectedIndex - 1);
