@@ -192,6 +192,15 @@ function draw(day) {
   slots.forEach((r, i) => { if (r && r.d != null)
     el('rect', {x: M.l + (i + .5) * SLOT - sq / 2, y: dirY(r.d) - sq / 2, width: sq, height: sq, fill: 'var(--line)', stroke: 'var(--bg)', 'stroke-width': NARROW ? 1 : 1.5}, svg); });
 
+  // 舞阪の満潮・干潮（線上の白抜きの点と時刻。潮位は3.5時間後の村櫛と同じなので省く）
+  for (const [hm, kind, cm] of td ? td.ev : []) {
+    const x = hx(hm), y = tideY(cm), hi = kind === '満潮', half = NARROW ? 14 : 30;
+    el('circle', {cx: x, cy: y, r: 3.5, fill: 'var(--bg)', stroke: 'var(--tide)', 'stroke-width': 1.5}, svg);
+    el('text', {x: clamp(x, M.l + half, W - M.r - half), y: hi ? y - 9 : y + 17, 'text-anchor': 'middle',
+      style: `fill:var(--tide);stroke:var(--bg);stroke-width:3px;paint-order:stroke;font-size:${fs}px`}, svg)
+      .textContent = NARROW ? hm : `舞阪 ${hm}`;
+  }
+
   // 村櫛の満潮・干潮の書き込み（棒や■に隠れないよう最前面。文字に背景色の縁取り）
   for (const [hm, kind, cm] of td ? td.mkev : []) {
     const x = hx(hm), y = tideY(cm), hi = kind === '満潮';
