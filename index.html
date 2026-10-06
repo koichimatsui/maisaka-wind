@@ -68,6 +68,8 @@ const dir16 = d => DIR16[Math.round(d / 22.5) % 16];
 // うねりの高さの色分け: [この高さ(m)未満, 色]
 const SWELL_LEVELS = [[1, 'var(--swell0)'], [2, 'var(--low)'], [3, 'var(--mid)'], [Infinity, 'var(--high)']];
 const swellColor = m => SWELL_LEVELS.find(([lim]) => (m ?? 0) < lim)[1];
+// 最新の実測がある枠の開始時刻（例 2026-10-07T07:30）。これより後の枠を予報で埋める
+const LAST_OBS_SLOT = ROWS.length ? ((t) => `${t.slice(0, 14)}${+t.slice(14, 16) >= 30 ? '30' : '00'}`)(ROWS[ROWS.length - 1][0]) : '';
 const byDay = {};
 for (const [t, s, d, ja, note] of ROWS) (byDay[t.slice(0, 10)] ??= []).push({t, s, d, ja, note});
 const days = ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"];
@@ -156,7 +158,7 @@ function criteriaHtml() {
   <li>風速と風向の低いほうをその枠の判定にする</li>
   <li>潮の流れ（村櫛の上げ潮＝北向き、下げ潮＝南向き）: 風と同じ向きに流れるとパワーが落ちるので1段階下げる。東西の風（流れに対して横）で下げ潮は、流れで南（養殖棚側）へ流されやすいので注意表示</li>
   <li>天気: 雷なら ×</li>
-  <li>これからの時間は風の予報（気象庁MSM、地上10m）で判定する（帯を薄く表示）。予報は灯台の実測より低めに出るので、風速を ${FCST_FACTOR} 倍して使う（暫定）。過去の欠測の枠は判定しない</li>
+  <li>最新の実測より後の時間（実測がまだ届いていない枠を含む）は風の予報（気象庁MSM、地上10m）で判定する（帯を薄く表示）。予報は灯台の実測より低めに出るので、風速を ${FCST_FACTOR} 倍して使う（暫定）。過去の欠測の枠は判定しない</li>
   <li>未反映: 水深（フィンが当たる潮位）・気温</li></ul>`;
 }
 
@@ -166,11 +168,12 @@ function draw(day) {
   const fs = NARROW ? 10 : 11;  // 小さい文字の大きさ
   const slots = Array(48).fill(null);
   for (const r of byDay[day] || []) slots[(+r.t.slice(11, 13)) * 2 + (+r.t.slice(14, 16) >= 30)] = r;
-  // これからの枠（実測が無く、枠の終わりが現在より後）は予報で埋める。風速は枠の中央の時刻で毎時値を補間して整数に丸める
-  const fc = WIND_FCST[day] || [], nowMinKey = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16);
+  // 最新の実測より後の枠は予報で埋める（時間が過ぎても実測が届くまでは予報のまま。夜間の取得しない時間も同じ）。
+  // それより前で実測が無い枠は欠測なので空欄。風速は枠の中央の時刻で毎時値を補間して補正倍率をかけ、整数に丸める
+  const fc = WIND_FCST[day] || [];
   const hm2 = n => `${String(Math.floor(n / 2)).padStart(2, '0')}:${n % 2 ? '30' : '00'}`;  // 枠の番号 → HH:MM
   for (let i = 0; i < 48; i++) {
-    if (slots[i] || `${day}T${hm2(i + 1)}` <= nowMinKey) continue;
+    if (slots[i] || `${day}T${hm2(i)}` <= LAST_OBS_SLOT) continue;
     const m = i * 30 + 15, h0 = Math.floor(m / 60), f = (m - h0 * 60) / 60, a = fc[h0], b = fc[h0 + 1];
     if (!a || !b) continue;
     const raw = a[0] + (b[0] - a[0]) * f, d = (f < .5 ? a : b)[1];
