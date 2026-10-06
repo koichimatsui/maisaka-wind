@@ -94,9 +94,8 @@ const toMin = hm => +hm.slice(0, 2) * 60 + +hm.slice(3);
 const wxIcon = (w, night) => /雷/.test(w) ? '⚡' : /みぞれ/.test(w) ? '🌨️' : /雪|凍雨/.test(w) ? '❄️'
   : /雨|降水|ひょう/.test(w) ? '🌧️' : /霧/.test(w) ? '🌫️' : /曇|くもり/.test(w) ? '☁️'
   : /晴/.test(w) ? (night ? '🌙' : '☀️') : '・';
-// 潮位は全期間共通の縮尺で、グラフの高さ10〜80%の帯に収める（日をまたいで高さを比べられるように）
-const allLv = Object.values(TIDE).flatMap(d => d.lv).filter(v => v != null);
-const TMIN = Math.min(...allLv) - 10, TMAX = Math.max(...allLv) + 10;
+// 潮位は今年の潮位表1年分の最低〜最高を縮尺にして、グラフの高さ10〜80%の帯に収める（どの日も同じ縮尺）
+const [TMIN, TMAX] = [-26, 133];
 const tideY = v => M.t + PH * (0.9 - 0.7 * (v - TMIN) / (TMAX - TMIN));
 
 // ===== 村櫛のコンディション判定（docs/condition_murakushi.md の実装。値を変えたら文書も直す） =====
