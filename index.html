@@ -125,6 +125,8 @@ const DIR_GROUPS = [
   [1, ['北北西', '北', '北北東'], '南の養殖棚の方向へ流されやすい'],
   [1, ['北東', '東北東', '東', '東南東', '南東', '南南東'], 'オフショア。岸近くは風が弱く乱れ出艇が大変、沖へ流される'],
 ];
+// 条件5: × にする天気（雷と、雨・雪などの降水すべて。アメダスの「降水」「霧雨」「しゅう雨」なども含む）
+const WX_NG = /雷|雨|降水|雪|みぞれ|ひょう/;
 const DIR_RANK = Object.fromEntries(DIR_GROUPS.flatMap(([r, dirs]) => dirs.map(d => [d, r])));
 function judge(i, r, td, sun, wx) {
   if (!sun) return null;
@@ -147,9 +149,9 @@ function judge(i, r, td, sun, wx) {
     else if (Math.abs(c) <= .5 && !rising) why.push(`${flow}：南（養殖棚側）へ流されやすい`);
     else why.push(flow);
   }
-  // 条件5: 雷は ×
+  // 条件5: 雷・雨（降水すべて）は ×
   const w = wx[Math.floor(i / 2)];
-  if (w && /雷/.test(w[0])) { rank = 0; why.push('雷'); }
+  if (w && WX_NG.test(w[0])) { rank = 0; why.push(w[0]); }
   if (r.fc) why.unshift('予報');
   return {mark: MARKS[rank], rank, why, fc: !!r.fc};
 }
@@ -163,7 +165,7 @@ function criteriaHtml() {
   <li>風向: <ul>${DIR_GROUPS.map(([r, dirs, why]) => `<li>${MARKS[r]} ${dirs.join('・')}：${why}</li>`).join('')}</ul></li>
   <li>風速と風向の低いほうをその枠の判定にする</li>
   <li>潮の流れ（村櫛の上げ潮＝北向き、下げ潮＝南向き）: 風と同じ向きに流れるとパワーが落ちるので1段階下げる。東西の風（流れに対して横）で下げ潮は、流れで南（養殖棚側）へ流されやすいので注意表示</li>
-  <li>天気: 雷なら ×</li>
+  <li>天気（浜松の実測・予報）: 雷・雨（雪など降水すべて）なら ×</li>
   <li>最新の実測より後の時間（実測がまだ届いていない枠を含む）は風の予報（気象庁MSM、地上10m）で判定する（帯を薄く表示）。予報は灯台の実測より低めに出るので、風速を ${FCST_FACTOR} 倍して使う（暫定）。過去の欠測の枠は判定しない</li>
   <li>未反映: 水深（フィンが当たる潮位）・気温</li></ul>`;
 }
